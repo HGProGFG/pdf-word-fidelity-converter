@@ -1,6 +1,6 @@
 # PDF Word Fidelity Converter
 
-This Windows program converts a PDF into an editable Word `.docx`, exports that document back to PDF, and makes the result auditable. It includes a simple teacher-facing desktop app as well as a command line for technical users.
+This Windows program converts a PDF into an editable Word `.docx` or exports a Word document into a print-quality PDF, then makes the result auditable. It includes a simple teacher-facing desktop app as well as a command line for technical users.
 
 It deliberately uses the desktop Microsoft Word PDF importer. That is the local conversion engine most likely to retain editable paragraphs, tables, positioned elements, and Word equation objects when the PDF contains enough semantic information. It does **not** pretend that every PDF can be reconstructed perfectly: a PDF preserves final page appearance, not the original Word structure. Scanned PDFs, flattened equations, outlined text, damaged fonts, and complex vector diagrams may need manual repair or the original authoring file.
 
@@ -99,3 +99,9 @@ For a truly guaranteed editable source, obtain the original Word/LaTeX/InDesign 
 ```
 
 The report contains the exact configured thresholds, so it can be retained with a document review record.
+
+## Word to PDF
+
+Choose a `.docx`, `.docm`, or legacy `.doc` file in either desktop app, then use the **Export Word to Print-Quality PDF** button. The converter uses Microsoft Word's native PDF engine, preserving the document's current fonts, spacing, page layout, tables, drawings, images, and equation rendering.
+
+For `.docx` and `.docm` input it also produces a `name.word-to-pdf-report.json` file with source-font, table, drawing, media, Office Math, and text-token checks. A Word file has no fixed-page visual reference until Word lays it out, so this direction uses Word's print output and text/font evidence rather than a pixel comparison against a source PDF.

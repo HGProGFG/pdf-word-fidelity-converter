@@ -11,14 +11,19 @@ Nếu Windows hỏi xác nhận, chỉ tiếp tục khi bạn nhận tệp từ 
 
 ## Cách dùng
 
-1. Nhấn **Chọn PDF…** và chọn tài liệu cần chuyển.
-2. Kiểm tra thư mục lưu kết quả, rồi nhấn **Chuyển PDF thành Word có thể chỉnh sửa**.
-3. Ứng dụng tạo ba loại tệp:
+1. Nhấn **Chọn tệp…** và chọn PDF hoặc tài liệu Word.
+2. Kiểm tra thư mục lưu kết quả, rồi nhấn nút chuyển đổi tương ứng.
+3. Khi chuyển PDF sang Word, ứng dụng tạo ba loại tệp:
 
    - `*.editable.docx`: tệp Word có thể chỉnh sửa.
    - `*.roundtrip.pdf`: PDF được xuất lại từ Word.
    - `*.fidelity-report.json`: báo cáo kỹ thuật về bố cục, phông chữ, bảng, hình, công thức và mức độ khác biệt.
 
-Nếu ứng dụng báo **cần kiểm tra**, hãy mở các ảnh so sánh trong thư mục kết quả. Luôn kiểm tra công thức, sơ đồ, bảng biểu, phần đầu/cuối trang và các ký tự tiếng Việt trước khi gửi tài liệu cho học sinh.
+4. Khi chuyển Word (`.docx`, `.docm` hoặc `.doc`) sang PDF, ứng dụng tạo:
+
+   - `*.converted.pdf`: PDF chất lượng in do Microsoft Word xuất trực tiếp.
+   - `*.word-to-pdf-report.json`: báo cáo về phông chữ, bảng, hình, công thức và văn bản. Với `.docx` hoặc `.docm`, báo cáo kiểm tra được đầy đủ hơn.
+
+Nếu ứng dụng báo **cần kiểm tra**, hãy mở báo cáo (và ảnh so sánh khi có) trong thư mục kết quả. Luôn kiểm tra công thức, sơ đồ, bảng biểu, phần đầu/cuối trang và các ký tự tiếng Việt trước khi gửi tài liệu cho học sinh.
 
 Tệp PDF gốc không bị thay đổi và ứng dụng không tải tài liệu lên Internet.

@@ -31,7 +31,7 @@ from xml.etree import ElementTree as ET
 
 
 APP_NAME = "PDF Word Fidelity Converter"
-REPORT_VERSION = 1
+REPORT_VERSION = 2
 WORD_FORMAT_DOCX = 16
 WORD_EXPORT_PDF = 17
 WORD_ALERTS_NONE = 0
@@ -47,6 +47,9 @@ MATH_SIGNAL = re.compile(
 )
 WORD_TOKEN = re.compile(r"[\w]+", re.UNICODE)
 SUBSET_FONT = re.compile(r"^[A-Z]{6}\+")
+PDF_SUFFIXES = {".pdf"}
+WORD_SUFFIXES = {".doc", ".docx", ".docm"}
+OOXML_WORD_SUFFIXES = {".docx", ".docm"}
 
 
 class ConversionError(RuntimeError):
@@ -69,15 +72,15 @@ class PageComparison:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Convert a PDF with Microsoft Word, export it back to PDF, and "
-            "produce an evidence-based fidelity report."
+            "Convert PDFs to editable Word documents or Word documents to print-quality PDFs, "
+            "with an evidence-based fidelity report."
         )
     )
-    parser.add_argument("--input", type=Path, help="Source PDF.")
+    parser.add_argument("--input", type=Path, help="Source .pdf, .docx, .docm, or .doc file.")
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="Destination folder. Defaults to a sibling folder named <pdf>-word-output.",
+        help="Destination folder. Defaults to a sibling folder based on the conversion direction.",
     )
     parser.add_argument(
         "--overwrite",
@@ -121,7 +124,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--skip-roundtrip",
         action="store_true",
-        help="Create DOCX only. No PDF export or fidelity gate is run.",
+        help="For PDF input only: create DOCX without exporting it back to PDF.",
     )
     parser.add_argument(
         "--diagnose",
@@ -216,7 +219,15 @@ def safe_output_paths(input_pdf: Path, output_dir: Path) -> tuple[Path, Path, Pa
     )
 
 
-def check_inputs(args: argparse.Namespace) -> None:
+def safe_word_to_pdf_output_paths(input_word: Path, output_dir: Path) -> tuple[Path, Path]:
+    stem = input_word.stem
+    return (
+        output_dir / f"{stem}.converted.pdf",
+        output_dir / f"{stem}.word-to-pdf-report.json",
+    )
+
+
+def check_inputs(args: argparse.Namespace, allowed_suffixes: set[str]) -> None:
     if args.dpi < 72 or args.dpi > 600:
         raise ConversionError("--dpi must be between 72 and 600.")
     ensure_range("--max-mean-delta", args.max_mean_delta)
@@ -225,9 +236,10 @@ def check_inputs(args: argparse.Namespace) -> None:
     if args.input is None:
         raise ConversionError("--input is required unless --diagnose is used.")
     if not args.input.is_file():
-        raise ConversionError(f"Input PDF was not found: {args.input}")
-    if args.input.suffix.lower() != ".pdf":
-        raise ConversionError("--input must point to a .pdf file.")
+        raise ConversionError(f"Input file was not found: {args.input}")
+    if args.input.suffix.lower() not in allowed_suffixes:
+        types = ", ".join(sorted(allowed_suffixes))
+        raise ConversionError(f"This conversion mode accepts: {types}.")
 
 
 def create_output_dir(output_dir: Path, paths: Iterable[Path], overwrite: bool) -> None:
@@ -442,6 +454,25 @@ def audit_docx(docx_path: Path) -> dict[str, Any]:
     }
 
 
+def docx_text_snapshot(docx_path: Path) -> str:
+    """Read text and Office Math text from an OOXML Word document for comparison."""
+    try:
+        with zipfile.ZipFile(docx_path) as package:
+            root = ET.fromstring(package.read("word/document.xml"))
+    except (KeyError, zipfile.BadZipFile, ET.ParseError) as exc:
+        raise ConversionError(f"The source file is not a readable OOXML Word document: {exc}") from exc
+
+    text_nodes = {f"{{{WORD_NS}}}t", f"{{{MATH_NS}}}t"}
+    break_nodes = {f"{{{WORD_NS}}}p", f"{{{WORD_NS}}}tab", f"{{{WORD_NS}}}br", f"{{{WORD_NS}}}cr"}
+    fragments: list[str] = []
+    for node in root.iter():
+        if node.tag in text_nodes and node.text:
+            fragments.append(node.text)
+        elif node.tag in break_nodes:
+            fragments.append("\n")
+    return "".join(fragments)
+
+
 def render_page(pdf: Any, page_number: int, dpi: int, image_cls: Any, fitz: Any) -> Any:
     """Render one page using module-level PyMuPDF primitives.
 
@@ -566,12 +597,50 @@ def build_warnings(source: dict[str, Any], docx: dict[str, Any], text: dict[str,
     return warnings
 
 
+def build_word_to_pdf_warnings(
+    source_docx: dict[str, Any] | None,
+    converted_pdf: dict[str, Any],
+    text: dict[str, Any] | None,
+    text_threshold: float,
+) -> list[str]:
+    warnings: list[str] = []
+    if source_docx is None:
+        warnings.append(
+            "The legacy .doc format was exported, but detailed text, font, table, and equation auditing "
+            "is available only for .docx or .docm files. Review the PDF manually."
+        )
+        return warnings
+
+    source_fonts = set(source_docx["declared_fonts"])
+    output_fonts = set(converted_pdf["fonts"])
+    missing_fonts = sorted(source_fonts - output_fonts)
+    if missing_fonts:
+        warnings.append(
+            "The exported PDF does not report all fonts declared in the source Word document: "
+            + ", ".join(missing_fonts[:12])
+        )
+    if source_docx["omml_equations"]:
+        warnings.append(
+            f"The source contains {source_docx['omml_equations']} editable Office Math equation object(s); "
+            "review their placement and legibility in the PDF."
+        )
+    if text is not None:
+        recall = text["source_token_recall"]
+        if recall is not None and recall < text_threshold:
+            warnings.append(
+                f"Text-token recall is {recall:.2%}, below the configured {text_threshold:.2%} threshold."
+            )
+        if text["source_token_count"] == 0:
+            warnings.append("No extractable text was found in the source Word document; text recall is not applicable.")
+    return warnings
+
+
 def write_report(path: Path, report: dict[str, Any]) -> None:
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def convert(args: argparse.Namespace) -> tuple[dict[str, Any], bool]:
-    check_inputs(args)
+def convert_pdf_to_word(args: argparse.Namespace) -> tuple[dict[str, Any], bool]:
+    check_inputs(args, PDF_SUFFIXES)
     output_dir = args.output_dir or args.input.parent / f"{args.input.stem}-word-output"
     output_docx, output_pdf, report_path, diff_dir = safe_output_paths(args.input, output_dir)
     targets = [output_docx, report_path] if args.skip_roundtrip else [output_docx, output_pdf, report_path]
@@ -589,10 +658,13 @@ def convert(args: argparse.Namespace) -> tuple[dict[str, Any], bool]:
     report: dict[str, Any] = {
         "report_version": REPORT_VERSION,
         "application": APP_NAME,
+        "conversion_type": "pdf_to_word",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "input_pdf": str(args.input.resolve()),
+        "output_directory": str(output_dir.resolve()),
         "editable_docx": str(output_docx.resolve()),
         "roundtrip_pdf": None,
+        "report_path": str(report_path.resolve()),
         "thresholds": {
             "dpi": args.dpi,
             "max_mean_delta": args.max_mean_delta,
@@ -646,6 +718,65 @@ def convert(args: argparse.Namespace) -> tuple[dict[str, Any], bool]:
     return report, bool(report["passed"])
 
 
+def convert_word_to_pdf(args: argparse.Namespace) -> tuple[dict[str, Any], bool]:
+    """Export a Word document through Word's native print-quality PDF engine."""
+    check_inputs(args, WORD_SUFFIXES)
+    if args.skip_roundtrip:
+        raise ConversionError("--skip-roundtrip applies only when converting a PDF to editable Word.")
+
+    output_dir = args.output_dir or args.input.parent / f"{args.input.stem}-pdf-output"
+    output_pdf, report_path = safe_word_to_pdf_output_paths(args.input, output_dir)
+    create_output_dir(output_dir, [output_pdf, report_path], args.overwrite)
+    _, _, visual_modules = require_dependencies(visual=True)
+    assert visual_modules is not None
+    fitz, _ = visual_modules
+    assert fitz is not None
+
+    started = time.monotonic()
+    source_docx: dict[str, Any] | None = None
+    source_text: str | None = None
+    if args.input.suffix.lower() in OOXML_WORD_SUFFIXES:
+        source_docx = audit_docx(args.input)
+        source_text = docx_text_snapshot(args.input)
+
+    export_word_to_pdf(args.input, output_pdf)
+    converted_pdf = pdf_snapshot(output_pdf, fitz)
+    text = token_recall(source_text, converted_pdf["extractable_text"]) if source_text is not None else None
+    text_passed = (
+        source_text is not None
+        and (text is None or text["source_token_recall"] is None or text["source_token_recall"] >= args.text_overlap_threshold)
+    )
+    report: dict[str, Any] = {
+        "report_version": REPORT_VERSION,
+        "application": APP_NAME,
+        "conversion_type": "word_to_pdf",
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "input_word_document": str(args.input.resolve()),
+        "output_directory": str(output_dir.resolve()),
+        "converted_pdf": str(output_pdf.resolve()),
+        "report_path": str(report_path.resolve()),
+        "thresholds": {"text_overlap_threshold": args.text_overlap_threshold},
+        "source_docx_audit": source_docx,
+        "pdf_export": {"pdf_snapshot": converted_pdf, "text_comparison": text},
+        "warnings": build_word_to_pdf_warnings(source_docx, converted_pdf, text, args.text_overlap_threshold),
+        "passed": text_passed,
+        "elapsed_seconds": round(time.monotonic() - started, 2),
+    }
+    write_report(report_path, report)
+    return report, bool(report["passed"])
+
+
+def convert(args: argparse.Namespace) -> tuple[dict[str, Any], bool]:
+    if args.input is None:
+        raise ConversionError("--input is required unless --diagnose is used.")
+    suffix = args.input.suffix.lower()
+    if suffix in PDF_SUFFIXES:
+        return convert_pdf_to_word(args)
+    if suffix in WORD_SUFFIXES:
+        return convert_word_to_pdf(args)
+    raise ConversionError("--input must point to a .pdf, .docx, .docm, or .doc file.")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.diagnose:
@@ -662,10 +793,13 @@ def main(argv: list[str] | None = None) -> int:
         traceback.print_exc()
         return 4
 
-    print(f"Editable DOCX: {report['editable_docx']}")
-    if report["roundtrip_pdf"]:
-        print(f"Round-trip PDF: {report['roundtrip_pdf']}")
-    print(f"Fidelity report: {Path(report['editable_docx']).with_name(Path(report['editable_docx']).stem.replace('.editable', '') + '.fidelity-report.json')}")
+    if report["conversion_type"] == "pdf_to_word":
+        print(f"Editable DOCX: {report['editable_docx']}")
+        if report["roundtrip_pdf"]:
+            print(f"Round-trip PDF: {report['roundtrip_pdf']}")
+    else:
+        print(f"Converted PDF: {report['converted_pdf']}")
+    print(f"Fidelity report: {report['report_path']}")
     if report["passed"] is None:
         print("Round-trip validation was skipped.")
         return 0

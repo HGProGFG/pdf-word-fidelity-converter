@@ -27,7 +27,7 @@ class AuditTests(unittest.TestCase):
     def test_docx_audit_counts_equations_tables_and_media(self):
         document_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
         <w:document xmlns:w="{converter.WORD_NS}" xmlns:m="{converter.MATH_NS}" xmlns:wp="{converter.DRAWING_NS}">
-          <w:body><w:tbl/><m:oMathPara><m:oMath/></m:oMathPara><wp:inline/></w:body>
+          <w:body><w:p><w:r><w:t>Lesson</w:t></w:r><w:tab/><m:oMathPara><m:oMath><m:t>x</m:t></m:oMath></m:oMathPara></w:p><w:tbl/><wp:inline/></w:body>
         </w:document>'''
         font_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
         <w:fonts xmlns:w="{converter.WORD_NS}"><w:font w:name="Calibri"/></w:fonts>'''
@@ -38,11 +38,19 @@ class AuditTests(unittest.TestCase):
                 package.writestr("word/fontTable.xml", font_xml)
                 package.writestr("word/media/image1.emf", b"not-an-image")
             audit = converter.audit_docx(path)
+            source_text = converter.docx_text_snapshot(path)
         self.assertEqual(audit["omml_equations"], 1)
         self.assertEqual(audit["tables"], 1)
         self.assertEqual(audit["word_drawing_anchors"], 1)
         self.assertEqual(audit["embedded_vector_media_files"], 1)
         self.assertEqual(audit["declared_fonts"], ["calibri"])
+        self.assertIn("Lesson", source_text)
+        self.assertIn("x", source_text)
+
+    def test_word_to_pdf_paths_are_stable(self):
+        pdf_path, report_path = converter.safe_word_to_pdf_output_paths(Path("worksheet.docx"), Path("out"))
+        self.assertEqual(pdf_path, Path("out/worksheet.converted.pdf"))
+        self.assertEqual(report_path, Path("out/worksheet.word-to-pdf-report.json"))
 
     def test_render_page_uses_module_level_pymupdf_primitives(self):
         class FakePixmap:
