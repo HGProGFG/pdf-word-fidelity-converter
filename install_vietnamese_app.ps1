@@ -31,13 +31,28 @@ New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 $target = Join-Path $installDir 'ChuyenDoiPDFSangWord.exe'
 Copy-Item -LiteralPath $Source -Destination $target -Force
 
-$shell = New-Object -ComObject WScript.Shell
-$startMenu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-$shortcut = $shell.CreateShortcut((Join-Path $startMenu 'Chuyển PDF sang Word.lnk'))
-$shortcut.TargetPath = $target
-$shortcut.WorkingDirectory = $installDir
-$shortcut.Description = 'Chuyển PDF sang Word có thể chỉnh sửa'
-$shortcut.Save()
+$shortcutCreated = $false
+try {
+    $shell = New-Object -ComObject WScript.Shell
+    $startMenu = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
+    if (-not $startMenu) {
+        throw 'Windows did not return a Start Menu Programs folder.'
+    }
+    New-Item -ItemType Directory -Path $startMenu -Force | Out-Null
+    # Use an ASCII filename so the shortcut is created reliably on all Windows locale/code-page settings.
+    $shortcut = $shell.CreateShortcut((Join-Path $startMenu 'Chuyen PDF sang Word - thay Bao.lnk'))
+    $shortcut.TargetPath = $target
+    $shortcut.WorkingDirectory = $installDir
+    $shortcut.Description = 'Chuyển PDF sang Word cho thầy Bảo'
+    $shortcut.Save()
+    $shortcutCreated = $true
+} catch {
+    Write-Warning "Ứng dụng đã được cài, nhưng không tạo được lối tắt Start Menu: $($_.Exception.Message)"
+}
 
 Write-Host 'Đã cài xong.' -ForegroundColor Green
-Write-Host 'Mở Start Menu và tìm: Chuyển PDF sang Word'
+if ($shortcutCreated) {
+    Write-Host 'Mở Start Menu và tìm: Chuyen PDF sang Word - thay Bao'
+} else {
+    Write-Host "Mở ứng dụng trực tiếp tại: $target"
+}
