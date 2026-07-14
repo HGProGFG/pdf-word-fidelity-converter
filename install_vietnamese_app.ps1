@@ -32,6 +32,7 @@ $target = Join-Path $installDir 'ChuyenDoiPDFSangWord.exe'
 Copy-Item -LiteralPath $Source -Destination $target -Force
 
 $shortcutCreated = $false
+$desktopShortcutCreated = $false
 try {
     $shell = New-Object -ComObject WScript.Shell
     $startMenu = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
@@ -46,8 +47,20 @@ try {
     $shortcut.Description = 'Chuyển PDF sang Word cho thầy Bảo'
     $shortcut.Save()
     $shortcutCreated = $true
+
+    $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
+    if (-not $desktop) {
+        throw 'Windows did not return a Desktop folder.'
+    }
+    New-Item -ItemType Directory -Path $desktop -Force | Out-Null
+    $desktopShortcut = $shell.CreateShortcut((Join-Path $desktop 'Chuyen PDF sang Word - thay Bao.lnk'))
+    $desktopShortcut.TargetPath = $target
+    $desktopShortcut.WorkingDirectory = $installDir
+    $desktopShortcut.Description = 'Chuyển PDF sang Word cho thầy Bảo'
+    $desktopShortcut.Save()
+    $desktopShortcutCreated = $true
 } catch {
-    Write-Warning "Ứng dụng đã được cài, nhưng không tạo được lối tắt Start Menu: $($_.Exception.Message)"
+    Write-Warning "Ứng dụng đã được cài, nhưng không tạo được một hoặc nhiều lối tắt: $($_.Exception.Message)"
 }
 
 Write-Host 'Đã cài xong.' -ForegroundColor Green
@@ -55,4 +68,7 @@ if ($shortcutCreated) {
     Write-Host 'Mở Start Menu và tìm: Chuyen PDF sang Word - thay Bao'
 } else {
     Write-Host "Mở ứng dụng trực tiếp tại: $target"
+}
+if ($desktopShortcutCreated) {
+    Write-Host 'Đã thêm lối tắt trên Desktop.'
 }
