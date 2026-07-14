@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.spec
+*.editable.docx
+*.roundtrip.pdf
+*.fidelity-report.json
+*.visual-diffs/
