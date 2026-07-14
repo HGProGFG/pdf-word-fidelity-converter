@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 import pdf_word_fidelity as converter
 
 
-APP_TITLE = "Chuyển PDF sang Word cho giáo viên"
+APP_TITLE = "Chuyển PDF sang Word cho thầy Bảo"
 
 
 class VietnameseTeacherConverterApp(tk.Tk):
@@ -38,7 +38,7 @@ class VietnameseTeacherConverterApp(tk.Tk):
         container.pack(fill="both", expand=True)
         container.columnconfigure(1, weight=1)
 
-        ttk.Label(container, text="Chuyển PDF ↔ Word cho giáo viên", font=("Segoe UI", 18, "bold")).grid(
+        ttk.Label(container, text="Chuyển PDF ↔ Word cho thầy Bảo", font=("Segoe UI", 18, "bold")).grid(
             row=0, column=0, columnspan=3, sticky="w"
         )
         ttk.Label(
