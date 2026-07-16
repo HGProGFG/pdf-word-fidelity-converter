@@ -100,6 +100,12 @@ For a truly guaranteed editable source, obtain the original Word/LaTeX/InDesign 
 
 The report contains the exact configured thresholds, so it can be retained with a document review record.
 
+## Batch conversion and mathematical symbols
+
+The Vietnamese desktop app supports selecting multiple PDFs and Word documents in one operation. It processes them one at a time so Microsoft Word can preserve layout reliably, and stores every result in its own numbered output folder.
+
+During PDF-to-Word conversion, mathematical Unicode characters are assigned to **Cambria Math**. The converter can safely restore a missing numeric-set symbol such as `∈ □` only when the original PDF text unambiguously identifies it as `∈ ℤ`, `∈ ℕ`, `∈ ℚ`, or `∈ ℝ`. Any remaining placeholder is reported for manual review rather than guessed.
+
 ## Word to PDF
 
 Choose a `.docx`, `.docm`, or legacy `.doc` file in either desktop app, then use the **Export Word to Print-Quality PDF** button. The converter uses Microsoft Word's native PDF engine, preserving the document's current fonts, spacing, page layout, tables, drawings, images, and equation rendering.

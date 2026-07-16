@@ -52,6 +52,11 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(pdf_path, Path("out/worksheet.converted.pdf"))
         self.assertEqual(report_path, Path("out/worksheet.word-to-pdf-report.json"))
 
+    def test_membership_placeholder_repair_requires_unambiguous_source_evidence(self):
+        replacements = converter.membership_placeholder_replacements("k ∈ ℤ")
+        self.assertEqual(replacements["∈ □"], "∈ ℤ")
+        self.assertEqual(converter.membership_placeholder_replacements("k ∈ ℤ; n ∈ ℕ"), {})
+
     def test_render_page_uses_module_level_pymupdf_primitives(self):
         class FakePixmap:
             width = 4

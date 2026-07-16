@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Giao diện tiếng Việt cho ứng dụng chuyển PDF sang Word có thể chỉnh sửa."""
+"""Giao diện tiếng Việt cho ứng dụng chuyển PDF và Word của thầy Bảo."""
 
 from __future__ import annotations
 
@@ -11,24 +11,27 @@ import tkinter as tk
 from argparse import Namespace
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
 import pdf_word_fidelity as converter
 
 
 APP_TITLE = "Chuyển PDF sang Word cho thầy Bảo"
+SUPPORTED_SUFFIXES = {".pdf", ".docx", ".docm", ".doc"}
 
 
 class VietnameseTeacherConverterApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title(APP_TITLE)
-        self.minsize(720, 460)
+        self.minsize(760, 480)
         self.resizable(True, False)
-        self.pdf_path = tk.StringVar()
+        self.selection_text = tk.StringVar()
         self.output_dir = tk.StringVar()
-        self.status = tk.StringVar(value="Hãy chọn tệp PDF hoặc Word cần chuyển đổi.")
+        self.status = tk.StringVar(value="Hãy chọn một hoặc nhiều tệp PDF / Word cần chuyển đổi.")
         self.open_folder_after = tk.BooleanVar(value=True)
         self.keep_all_diffs = tk.BooleanVar(value=False)
+        self.selected_files: list[Path] = []
         self._events: queue.Queue[tuple[str, object]] = queue.Queue()
         self._build()
         self.after(150, self._check_events)
@@ -44,15 +47,15 @@ class VietnameseTeacherConverterApp(tk.Tk):
         ttk.Label(
             container,
             text=(
-                "Chuyển PDF thành Word có thể chỉnh sửa hoặc xuất tài liệu Word thành PDF chất lượng in. "
-                "Ứng dụng tự động tạo báo cáo kiểm tra văn bản, phông chữ, bảng, hình và công thức."
+                "Chọn nhiều tệp PDF hoặc Word cùng lúc. Ứng dụng lần lượt tạo Word có thể chỉnh sửa "
+                "hoặc PDF chất lượng in, kèm báo cáo kiểm tra văn bản, phông chữ, bảng, hình và công thức."
             ),
-            wraplength=650,
+            wraplength=690,
         ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 22))
 
         ttk.Label(container, text="Tệp PDF hoặc Word").grid(row=2, column=0, sticky="w", padx=(0, 12))
-        ttk.Entry(container, textvariable=self.pdf_path).grid(row=2, column=1, sticky="ew")
-        ttk.Button(container, text="Chọn tệp…", command=self._choose_pdf).grid(row=2, column=2, padx=(10, 0))
+        ttk.Entry(container, textvariable=self.selection_text).grid(row=2, column=1, sticky="ew")
+        ttk.Button(container, text="Chọn nhiều tệp…", command=self._choose_files).grid(row=2, column=2, padx=(10, 0))
 
         ttk.Label(container, text="Lưu kết quả tại").grid(row=3, column=0, sticky="w", padx=(0, 12), pady=(14, 0))
         ttk.Entry(container, textvariable=self.output_dir).grid(row=3, column=1, sticky="ew", pady=(14, 0))
@@ -67,9 +70,9 @@ class VietnameseTeacherConverterApp(tk.Tk):
         )
         ttk.Checkbutton(options, text="Lưu ảnh so sánh khi chuyển PDF sang Word", variable=self.keep_all_diffs).pack(side="left")
 
-        self.progress = ttk.Progressbar(container, mode="indeterminate")
+        self.progress = ttk.Progressbar(container, mode="determinate", value=0)
         self.progress.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(24, 8))
-        ttk.Label(container, textvariable=self.status, wraplength=650).grid(
+        ttk.Label(container, textvariable=self.status, wraplength=690).grid(
             row=6, column=0, columnspan=3, sticky="w"
         )
 
@@ -84,44 +87,75 @@ class VietnameseTeacherConverterApp(tk.Tk):
         ttk.Label(
             container,
             text=(
-                "Mẹo: Khi chuyển PDF sang Word, hãy bấm vào công thức để kiểm tra khả năng chỉnh sửa. "
-                "Khi chuyển Word sang PDF, hãy kiểm tra công thức, sơ đồ, bảng biểu và các ký tự tiếng Việt."
+                "Mẹo: Các tệp được xử lý lần lượt để Microsoft Word giữ nguyên định dạng. "
+                "Ký hiệu toán học được đặt phông Cambria Math; hãy kiểm tra công thức, sơ đồ, bảng biểu "
+                "và ký tự tiếng Việt trong các kết quả có báo “cần kiểm tra”."
             ),
-            wraplength=650,
+            wraplength=690,
             foreground="#555555",
         ).grid(row=9, column=0, columnspan=3, sticky="w")
 
-    def _choose_pdf(self) -> None:
-        selected = filedialog.askopenfilename(
-            title="Chọn tệp cần chuyển",
-            filetypes=[("Tệp PDF", "*.pdf"), ("Tài liệu Word", "*.docx *.docm *.doc"), ("Tất cả tệp", "*.*")],
+    def _choose_files(self) -> None:
+        selected = filedialog.askopenfilenames(
+            title="Chọn các tệp cần chuyển",
+            filetypes=[("Tệp được hỗ trợ", "*.pdf *.docx *.docm *.doc"), ("Tệp PDF", "*.pdf"), ("Tài liệu Word", "*.docx *.docm *.doc")],
         )
         if not selected:
             return
-        document = Path(selected)
-        self.pdf_path.set(str(document))
-        if document.suffix.lower() == ".pdf":
-            self.output_dir.set(str(document.parent / f"{document.stem}-Word-da-chinh-sua"))
-            self.convert_button.configure(text="Chuyển PDF thành Word có thể chỉnh sửa")
-            self.status.set("Sẵn sàng chuyển PDF sang Word. Tệp PDF gốc sẽ không bị thay đổi.")
+        self.selected_files = [Path(item) for item in selected]
+        if len(self.selected_files) == 1:
+            self.selection_text.set(str(self.selected_files[0]))
+            document = self.selected_files[0]
+            suffix = "Word-da-chinh-sua" if document.suffix.lower() == ".pdf" else "PDF-da-chuyen-doi"
+            self.output_dir.set(str(document.parent / f"{document.stem}-{suffix}"))
         else:
-            self.output_dir.set(str(document.parent / f"{document.stem}-PDF-da-chuyen-doi"))
-            self.convert_button.configure(text="Chuyển Word thành PDF chất lượng in")
-            self.status.set("Sẵn sàng xuất Word sang PDF. Tệp Word gốc sẽ không bị thay đổi.")
+            preview = ", ".join(path.name for path in self.selected_files[:3])
+            if len(self.selected_files) > 3:
+                preview += ", …"
+            self.selection_text.set(f"Đã chọn {len(self.selected_files)} tệp: {preview}")
+            self.output_dir.set(str(self.selected_files[0].parent / "ket-qua-chuyen-doi"))
+        self._update_selection_status()
+
+    def _update_selection_status(self) -> None:
+        count = len(self.selected_files)
+        pdfs = sum(path.suffix.lower() == ".pdf" for path in self.selected_files)
+        words = count - pdfs
+        if count == 1:
+            if pdfs:
+                self.convert_button.configure(text="Chuyển PDF thành Word có thể chỉnh sửa")
+                self.status.set("Sẵn sàng chuyển PDF sang Word. Tệp PDF gốc sẽ không bị thay đổi.")
+            else:
+                self.convert_button.configure(text="Chuyển Word thành PDF chất lượng in")
+                self.status.set("Sẵn sàng xuất Word sang PDF. Tệp Word gốc sẽ không bị thay đổi.")
+        elif pdfs == count:
+            self.convert_button.configure(text=f"Chuyển {count} PDF thành Word")
+            self.status.set(f"Sẵn sàng chuyển lần lượt {count} tệp PDF sang Word.")
+        elif words == count:
+            self.convert_button.configure(text=f"Chuyển {count} Word thành PDF")
+            self.status.set(f"Sẵn sàng xuất lần lượt {count} tài liệu Word sang PDF.")
+        else:
+            self.convert_button.configure(text=f"Chuyển {count} tệp đã chọn")
+            self.status.set(f"Sẵn sàng chuyển lần lượt {pdfs} PDF và {words} tài liệu Word.")
 
     def _choose_output(self) -> None:
         selected = filedialog.askdirectory(title="Chọn nơi lưu các tệp đã chuyển đổi")
         if selected:
             self.output_dir.set(selected)
 
+    def _input_documents(self) -> list[Path]:
+        if self.selected_files:
+            return list(self.selected_files)
+        typed_path = Path(self.selection_text.get().strip()).expanduser()
+        return [typed_path] if typed_path.is_file() else []
+
     def _start_conversion(self) -> None:
-        input_document = Path(self.pdf_path.get()).expanduser()
+        input_documents = self._input_documents()
         output_text = self.output_dir.get().strip()
-        output_dir = Path(output_text).expanduser() if output_text else None
-        if not input_document.is_file() or input_document.suffix.lower() not in {".pdf", ".docx", ".docm", ".doc"}:
-            messagebox.showerror(APP_TITLE, "Vui lòng chọn tệp PDF hoặc tài liệu Word có sẵn trước.")
+        output_root = Path(output_text).expanduser() if output_text else None
+        if not input_documents or any(not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES for path in input_documents):
+            messagebox.showerror(APP_TITLE, "Vui lòng chọn một hoặc nhiều tệp PDF / Word có sẵn trước.")
             return
-        if output_dir is None:
+        if output_root is None:
             messagebox.showerror(APP_TITLE, "Vui lòng chọn thư mục để lưu kết quả.")
             return
         diagnostics = converter.environment_diagnostics()
@@ -129,85 +163,85 @@ class VietnameseTeacherConverterApp(tk.Tk):
             missing = []
             if not diagnostics["microsoft_word_detected"]:
                 missing.append("Microsoft Word bản cài đặt trên máy")
-            for module, installed in diagnostics["dependencies"].items():
-                if not installed:
-                    missing.append(module)
+            missing.extend(module for module, installed in diagnostics["dependencies"].items() if not installed)
             messagebox.showerror(
                 APP_TITLE,
-                "Máy tính chưa sẵn sàng. Thiếu: "
-                + ", ".join(missing)
-                + "\n\nHãy nhờ người cài đặt ứng dụng chạy phần thiết lập trước.",
+                "Máy tính chưa sẵn sàng. Thiếu: " + ", ".join(missing) + "\n\nHãy chạy phần thiết lập trước.",
             )
             return
 
         self.convert_button.configure(state="disabled")
-        self.progress.start(12)
-        if input_document.suffix.lower() == ".pdf":
-            self.status.set("Microsoft Word đang chuyển PDF sang Word. PDF lớn hoặc PDF quét có thể mất vài phút…")
-        else:
-            self.status.set("Microsoft Word đang xuất tài liệu Word thành PDF chất lượng in…")
-        options = Namespace(
-            input=input_document,
-            output_dir=output_dir,
-            overwrite=True,
-            dpi=144,
-            max_mean_delta=0.05,
-            max_changed_pixel_ratio=0.15,
-            text_overlap_threshold=0.97,
-            allow_difference=True,
-            keep_all_diffs=self.keep_all_diffs.get(),
-            skip_roundtrip=False,
-            diagnose=False,
-        )
-        threading.Thread(target=self._convert_worker, args=(options,), daemon=True).start()
+        self.progress.configure(value=0, maximum=len(input_documents))
+        self.status.set(f"Đang chuẩn bị xử lý {len(input_documents)} tệp bằng Microsoft Word…")
+        threading.Thread(target=self._convert_worker, args=(input_documents, output_root), daemon=True).start()
 
-    def _convert_worker(self, options: Namespace) -> None:
+    def _task_output_dir(self, output_root: Path, document: Path, index: int, total: int) -> Path:
+        if total == 1:
+            return output_root
+        suffix = "Word-da-chinh-sua" if document.suffix.lower() == ".pdf" else "PDF-da-chuyen-doi"
+        return output_root / f"{index:02d}-{document.stem}-{suffix}"
+
+    def _convert_worker(self, input_documents: list[Path], output_root: Path) -> None:
+        results: list[dict[str, Any]] = []
+        total = len(input_documents)
         try:
-            report, passed = converter.convert(options)
-            self._events.put(("success", (report, passed)))
+            for index, document in enumerate(input_documents, start=1):
+                self._events.put(("progress", (index, total, document)))
+                options = Namespace(
+                    input=document,
+                    output_dir=self._task_output_dir(output_root, document, index, total),
+                    overwrite=True,
+                    dpi=144,
+                    max_mean_delta=0.05,
+                    max_changed_pixel_ratio=0.15,
+                    text_overlap_threshold=0.97,
+                    allow_difference=True,
+                    keep_all_diffs=self.keep_all_diffs.get(),
+                    skip_roundtrip=False,
+                    diagnose=False,
+                )
+                try:
+                    report, passed = converter.convert(options)
+                    results.append({"input": document, "report": report, "passed": passed, "error": None})
+                except Exception as exc:
+                    results.append({"input": document, "report": None, "passed": False, "error": str(exc)})
+            self._events.put(("complete", (results, output_root)))
         except Exception as exc:
-            self._events.put(("error", (str(exc), traceback.format_exc())))
+            self._events.put(("fatal", (str(exc), traceback.format_exc())))
 
     def _check_events(self) -> None:
         try:
             while True:
                 event, payload = self._events.get_nowait()
-                self.progress.stop()
-                self.convert_button.configure(state="normal")
-                if event == "success":
-                    report, passed = payload  # type: ignore[misc]
-                    output_dir = Path(report["output_directory"])
-                    is_word_to_pdf = report["conversion_type"] == "word_to_pdf"
+                if event == "progress":
+                    index, total, document = payload  # type: ignore[misc]
+                    self.progress.configure(value=index - 1, maximum=total)
+                    self.status.set(f"Đang xử lý tệp {index}/{total}: {document.name}")
+                elif event == "complete":
+                    results, output_root = payload  # type: ignore[misc]
+                    self.progress.configure(value=len(results), maximum=max(len(results), 1))
+                    self.convert_button.configure(state="normal")
                     if self.open_folder_after.get():
-                        os.startfile(output_dir)  # type: ignore[attr-defined]
-                    if passed:
-                        self.status.set("Hoàn tất - kiểm tra văn bản và bố cục đã đạt yêu cầu.")
-                        success_message = (
-                            "Đã hoàn tất. Tệp PDF đã được xuất và vượt qua kiểm tra tự động.\n\n"
-                            if is_word_to_pdf
-                            else "Đã hoàn tất. Tệp Word và PDF kiểm tra lại đã vượt qua kiểm tra tự động.\n\n"
-                        ) + f"Đã lưu tại:\n{output_dir}"
-                        messagebox.showinfo(
-                            APP_TITLE,
-                            success_message,
-                        )
+                        os.startfile(output_root)  # type: ignore[attr-defined]
+                    successful = sum(result["error"] is None and result["passed"] for result in results)
+                    review = sum(result["error"] is None and not result["passed"] for result in results)
+                    failed = [result for result in results if result["error"] is not None]
+                    self.status.set(
+                        f"Hoàn tất: {successful} đạt kiểm tra, {review} cần kiểm tra, {len(failed)} không thể chuyển."
+                    )
+                    details = f"Đã lưu kết quả tại:\n{output_root}\n\nĐạt kiểm tra: {successful}\nCần kiểm tra: {review}\nLỗi: {len(failed)}"
+                    if failed:
+                        names = ", ".join(result["input"].name for result in failed[:4])
+                        messagebox.showwarning(APP_TITLE, details + f"\n\nKhông thể chuyển: {names}")
+                    elif review:
+                        messagebox.showwarning(APP_TITLE, details + "\n\nHãy mở báo cáo để kiểm tra công thức, sơ đồ và ký tự đặc biệt.")
                     else:
-                        self.status.set("Hoàn tất - đã tạo tệp nhưng cần kiểm tra nhanh trước khi chia sẻ.")
-                        messagebox.showwarning(
-                            APP_TITLE,
-                            "Đã hoàn tất, nhưng vui lòng kiểm tra kết quả trước khi chia sẻ.\n\n"
-                            "Hãy mở báo cáo kiểm tra trong thư mục kết quả. "
-                            "Đặc biệt kiểm tra công thức, sơ đồ và bảng biểu.\n\n"
-                            f"Đã lưu tại:\n{output_dir}",
-                        )
+                        messagebox.showinfo(APP_TITLE, details)
                 else:
                     message, details = payload  # type: ignore[misc]
-                    self.status.set("Không thể hoàn tất chuyển đổi. Tệp gốc không bị thay đổi.")
-                    messagebox.showerror(
-                        APP_TITLE,
-                        f"Không thể hoàn tất chuyển đổi:\n\n{message}\n\n"
-                        "Nếu PDF được đặt mật khẩu hoặc là bản quét, có thể cần tệp nguồn khác hoặc OCR."
-                    )
+                    self.convert_button.configure(state="normal")
+                    self.status.set("Không thể hoàn tất chuyển đổi. Các tệp gốc không bị thay đổi.")
+                    messagebox.showerror(APP_TITLE, f"Không thể hoàn tất chuyển đổi:\n\n{message}")
                     print(details)
         except queue.Empty:
             pass

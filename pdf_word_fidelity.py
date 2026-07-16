@@ -31,7 +31,7 @@ from xml.etree import ElementTree as ET
 
 
 APP_NAME = "PDF Word Fidelity Converter"
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 WORD_FORMAT_DOCX = 16
 WORD_EXPORT_PDF = 17
 WORD_ALERTS_NONE = 0
@@ -42,9 +42,10 @@ WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
 
-MATH_SIGNAL = re.compile(
-    r"[∑∏∫√∞≈≠≤≥±×÷∂∇∈∉∪∩⊂⊃⇒⇔αβγδεζηθικλμνξπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΠΡΣΤΥΦΧΨΩ]"
-)
+MATH_SYMBOLS = "∑∏∫√∞≈≠≤≥±×÷∂∇∈∉∪∩⊂⊃⇒⇔ℕℤℚℝ∀∃αβγδεζηθικλμνξπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΠΡΣΤΥΦΧΨΩ"
+MATH_SIGNAL = re.compile("[" + re.escape(MATH_SYMBOLS) + "]")
+MATH_MEMBERSHIP_SETS = "ℕℤℚℝ"
+MISSING_GLYPHS = ("□", "■", "�")
 WORD_TOKEN = re.compile(r"[\w]+", re.UNICODE)
 SUBSET_FONT = re.compile(r"^[A-Z]{6}\+")
 PDF_SUFFIXES = {".pdf"}
@@ -250,7 +251,81 @@ def create_output_dir(output_dir: Path, paths: Iterable[Path], overwrite: bool) 
         raise ConversionError(f"Refusing to overwrite existing outputs. Use --overwrite: {names}")
 
 
-def convert_with_word(input_pdf: Path, output_docx: Path) -> None:
+def membership_placeholder_replacements(source_text: str) -> dict[str, str]:
+    """Infer a safe replacement only when the source uses one numeric-set symbol."""
+    targets = set(re.findall(r"∈\s*([ℕℤℚℝ])", source_text))
+    if len(targets) != 1:
+        return {}
+    target = targets.pop()
+    return {
+        "∈□": f"∈{target}",
+        "∈ □": f"∈ {target}",
+        "∈■": f"∈{target}",
+        "∈ ■": f"∈ {target}",
+        "∈�": f"∈{target}",
+        "∈ �": f"∈ {target}",
+    }
+
+
+def apply_math_font(document: Any) -> int:
+    """Apply Cambria Math only to math-symbol runs, leaving surrounding Vietnamese text intact."""
+    try:
+        original = str(document.Content.Text)
+    except Exception:
+        return 0
+    glyphs = sorted(set(original).intersection(MATH_SYMBOLS))
+    formatted = 0
+    for glyph in glyphs:
+        search = document.Content.Duplicate
+        story_end = search.End
+        find = search.Find
+        find.ClearFormatting()
+        find.Text = glyph
+        find.Forward = True
+        find.Wrap = 0  # wdFindStop
+        while find.Execute():
+            search.Font.Name = "Cambria Math"
+            formatted += 1
+            if search.End >= story_end:
+                break
+            search.SetRange(search.End, story_end)
+            find = search.Find
+            find.ClearFormatting()
+            find.Text = glyph
+            find.Forward = True
+            find.Wrap = 0
+    return formatted
+
+
+def repair_math_glyphs(document: Any, source_text: str | None) -> dict[str, Any]:
+    """Repair PDF-imported math placeholders when source evidence makes the fix unambiguous."""
+    replacements = membership_placeholder_replacements(source_text or "")
+    replaced = 0
+    content = document.Content
+    for broken, replacement in replacements.items():
+        before = str(content.Text).count(broken)
+        if not before:
+            continue
+        find = content.Find
+        find.ClearFormatting()
+        find.Replacement.ClearFormatting()
+        find.Text = broken
+        find.Replacement.Text = replacement
+        find.Forward = True
+        find.Wrap = 1  # wdFindContinue
+        find.Execute(Replace=2)  # wdReplaceAll
+        replaced += before
+    formatted = apply_math_font(document)
+    output_text = str(content.Text)
+    return {
+        "font": "Cambria Math",
+        "math_symbol_runs_formatted": formatted,
+        "safe_placeholder_replacements": replaced,
+        "remaining_placeholder_characters": sum(output_text.count(glyph) for glyph in MISSING_GLYPHS),
+    }
+
+
+def convert_with_word(input_pdf: Path, output_docx: Path, source_text: str | None = None) -> dict[str, Any]:
     """Open PDF through Word's native reflow engine and save a DOCX."""
     win32com, pythoncom, _ = require_dependencies(visual=False)
     pythoncom.CoInitialize()
@@ -270,6 +345,7 @@ def convert_with_word(input_pdf: Path, output_docx: Path) -> None:
             OpenAndRepair=True,
             NoEncodingDialog=True,
         )
+        math_repair = repair_math_glyphs(document, source_text)
         document.SaveAs2(
             FileName=str(output_docx.resolve()),
             FileFormat=WORD_FORMAT_DOCX,
@@ -296,6 +372,7 @@ def convert_with_word(input_pdf: Path, output_docx: Path) -> None:
         pythoncom.CoUninitialize()
     if not output_docx.exists() or output_docx.stat().st_size == 0:
         raise ConversionError("Word reported success but did not create a DOCX output.")
+    return math_repair
 
 
 def export_word_to_pdf(input_docx: Path, output_pdf: Path) -> None:
@@ -318,6 +395,8 @@ def export_word_to_pdf(input_docx: Path, output_pdf: Path) -> None:
             OpenAndRepair=True,
             NoEncodingDialog=True,
         )
+        # Ensure native math glyphs such as ℤ use a font with the required Unicode coverage before export.
+        apply_math_font(document)
         document.ExportAsFixedFormat(
             OutputFileName=str(output_pdf.resolve()),
             ExportFormat=WORD_EXPORT_PDF,
@@ -571,7 +650,13 @@ def compare_visuals(
     return comparisons, page_count_matches and all(item.passed for item in comparisons)
 
 
-def build_warnings(source: dict[str, Any], docx: dict[str, Any], text: dict[str, Any], text_threshold: float) -> list[str]:
+def build_warnings(
+    source: dict[str, Any],
+    docx: dict[str, Any],
+    text: dict[str, Any],
+    text_threshold: float,
+    math_repair: dict[str, Any],
+) -> list[str]:
     warnings: list[str] = []
     source_fonts = set(source["fonts"])
     docx_fonts = set(docx["declared_fonts"])
@@ -593,6 +678,11 @@ def build_warnings(source: dict[str, Any], docx: dict[str, Any], text: dict[str,
     if source["extractable_text_characters"] == 0:
         warnings.append(
             "The source appears image-only or protected. OCR/reconstruction may be needed for editable text."
+        )
+    if math_repair["remaining_placeholder_characters"]:
+        warnings.append(
+            "The converted document still contains missing-glyph placeholder characters. Review the affected "
+            "equations; the source PDF may not expose enough semantic text to restore them automatically."
         )
     return warnings
 
@@ -653,7 +743,7 @@ def convert_pdf_to_word(args: argparse.Namespace) -> tuple[dict[str, Any], bool]
 
     started = time.monotonic()
     source = pdf_snapshot(args.input, fitz) if fitz is not None else {"path": str(args.input)}
-    convert_with_word(args.input, output_docx)
+    math_repair = convert_with_word(args.input, output_docx, source.get("extractable_text"))
     docx = audit_docx(output_docx)
     report: dict[str, Any] = {
         "report_version": REPORT_VERSION,
@@ -673,6 +763,7 @@ def convert_pdf_to_word(args: argparse.Namespace) -> tuple[dict[str, Any], bool]
         },
         "source_pdf": source,
         "docx_editability_audit": docx,
+        "math_glyph_repair": math_repair,
         "roundtrip": None,
         "warnings": [],
         "passed": None,
@@ -711,7 +802,7 @@ def convert_pdf_to_word(args: argparse.Namespace) -> tuple[dict[str, Any], bool]
             "pages": [asdict(comparison) for comparison in comparisons],
         },
     }
-    report["warnings"] = build_warnings(source, docx, text, args.text_overlap_threshold)
+    report["warnings"] = build_warnings(source, docx, text, args.text_overlap_threshold, math_repair)
     report["passed"] = visual_passed and text_passed
     report["elapsed_seconds"] = round(time.monotonic() - started, 2)
     write_report(report_path, report)

@@ -14,12 +14,13 @@ $ErrorActionPreference = 'Stop'
 if (-not $Source) {
     $candidates = @(
         (Join-Path $PSScriptRoot 'ChuyenDoiPDFSangWord.exe'),
+        (Join-Path $PSScriptRoot 'release\ChuyenDoiPDFSangWord.exe'),
         (Join-Path $PSScriptRoot 'dist\ChuyenDoiPDFSangWord.exe')
     )
     $Source = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
 if (-not $Source) {
-    throw 'Cannot find ChuyenDoiPDFSangWord.exe in the application folder.'
+    throw 'Không tìm thấy ChuyenDoiPDFSangWord.exe. Hãy tải bản phát hành đầy đủ thay vì Source code của GitHub.'
 }
 $Source = (Resolve-Path -LiteralPath $Source).Path
 if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) {
