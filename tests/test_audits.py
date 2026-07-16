@@ -62,6 +62,11 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(repaired, "k ∈ ℤ; n∈ℤ; x ∈ □")
         self.assertEqual(count, 2)
 
+    def test_integer_index_repair_handles_word_private_glyphs_but_not_letters(self):
+        repaired, count = converter.repair_integer_index_placeholders("(k ∈ \uf0a3); (k ∈ A)")
+        self.assertEqual(repaired, "(k ∈ ℤ); (k ∈ A)")
+        self.assertEqual(count, 1)
+
     def test_render_page_uses_module_level_pymupdf_primitives(self):
         class FakePixmap:
             width = 4

@@ -21,6 +21,7 @@ import re
 import shutil
 import sys
 import time
+import unicodedata
 import traceback
 import zipfile
 from dataclasses import dataclass, asdict
@@ -46,7 +47,12 @@ MATH_SYMBOLS = "∑∏∫√∞≈≠≤≥±×÷∂∇∈∉∪∩⊂⊃⇒⇔�
 MATH_SIGNAL = re.compile("[" + re.escape(MATH_SYMBOLS) + "]")
 MATH_MEMBERSHIP_SETS = "ℕℤℚℝ"
 MISSING_GLYPHS = ("□", "■", "�")
-INTEGER_INDEX_PLACEHOLDER = re.compile(r"([kKmMnNiIjJ])([ \t]*)∈([ \t]*)[□■�]")
+# Word can import an un-mapped PDF glyph as a visible box, a private-use
+# character, or a control character.  Limit the repair to a complete,
+# parenthesized/index-set expression so normal text is never guessed.
+INTEGER_INDEX_PLACEHOLDER = re.compile(
+    r"([kKmMnNiIjJ])([ \t]*)∈([ \t]*)(?![ℕℤℚℝ])([^\s()\[\]{};,.\:\r\n])(?=[ \t]*[)\]\};,.\r\n])"
+)
 WORD_TOKEN = re.compile(r"[\w]+", re.UNICODE)
 SUBSET_FONT = re.compile(r"^[A-Z]{6}\+")
 PDF_SUFFIXES = {".pdf"}
@@ -268,13 +274,33 @@ def membership_placeholder_replacements(source_text: str) -> dict[str, str]:
     }
 
 
+def integer_index_replacement(match: re.Match[str]) -> str | None:
+    """Return an unambiguous ``k ∈ ℤ`` replacement, or ``None`` when it is not safe."""
+    glyph = match[4]
+    # A letter (for example, k ∈ A) can be deliberate.  PDF-import loss instead
+    # appears as a symbol, a private-use glyph, or a control code.
+    if glyph not in MISSING_GLYPHS and unicodedata.category(glyph) not in {"Cc", "Co", "Cn", "So", "Sm"}:
+        return None
+    return f"{match[1]}{match[2]}∈{match[3]}ℤ"
+
+
 def repair_integer_index_placeholders(text: str) -> tuple[str, int]:
     """Restore the conventional integer-index condition, e.g. ``k ∈ □`` -> ``k ∈ ℤ``.
 
     This intentionally applies only to common index variables. A generic expression such as
     ``x ∈ □`` could mean a different set and is left for manual review.
     """
-    return INTEGER_INDEX_PLACEHOLDER.subn(lambda match: f"{match[1]}{match[2]}∈{match[3]}ℤ", text)
+    repaired = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal repaired
+        replacement = integer_index_replacement(match)
+        if replacement is None:
+            return match.group(0)
+        repaired += 1
+        return replacement
+
+    return INTEGER_INDEX_PLACEHOLDER.sub(replace, text), repaired
 
 
 def apply_math_font(document: Any) -> int:
@@ -314,14 +340,15 @@ def repair_math_glyphs(document: Any, source_text: str | None) -> dict[str, Any]
     content = document.Content
     original_text = str(content.Text)
     heuristic_matches = list(INTEGER_INDEX_PLACEHOLDER.finditer(original_text))
+    heuristic_replaced = 0
     # Work from the end so Word range offsets remain valid after each replacement.
     for match in reversed(heuristic_matches):
-        fixed_text, fixed_count = repair_integer_index_placeholders(match.group(0))
-        if not fixed_count:
+        fixed_text = integer_index_replacement(match)
+        if fixed_text is None:
             continue
         repair_range = document.Range(content.Start + match.start(), content.Start + match.end())
         repair_range.Text = fixed_text
-    heuristic_replaced = len(heuristic_matches)
+        heuristic_replaced += 1
     for broken, replacement in replacements.items():
         before = str(content.Text).count(broken)
         if not before:
