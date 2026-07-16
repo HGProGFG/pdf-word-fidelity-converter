@@ -57,6 +57,11 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(replacements["∈ □"], "∈ ℤ")
         self.assertEqual(converter.membership_placeholder_replacements("k ∈ ℤ; n ∈ ℕ"), {})
 
+    def test_integer_index_placeholder_repair_restores_only_index_variables(self):
+        repaired, count = converter.repair_integer_index_placeholders("k ∈ □; n∈■; x ∈ □")
+        self.assertEqual(repaired, "k ∈ ℤ; n∈ℤ; x ∈ □")
+        self.assertEqual(count, 2)
+
     def test_render_page_uses_module_level_pymupdf_primitives(self):
         class FakePixmap:
             width = 4

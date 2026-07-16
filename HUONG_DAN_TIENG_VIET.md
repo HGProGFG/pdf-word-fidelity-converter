@@ -27,6 +27,6 @@ Nếu Windows hỏi xác nhận, chỉ tiếp tục khi bạn nhận tệp từ 
 
 Nếu ứng dụng báo **cần kiểm tra**, hãy mở báo cáo (và ảnh so sánh khi có) trong thư mục kết quả. Luôn kiểm tra công thức, sơ đồ, bảng biểu, phần đầu/cuối trang và các ký tự tiếng Việt trước khi gửi tài liệu cho học sinh.
 
-Ứng dụng dùng phông **Cambria Math** cho các ký hiệu toán học như `∈`, `ℤ`, `ℕ`, `√`, `π` và phân số. Nếu PDF gốc đã chứa ô vuông thay cho ký hiệu, báo cáo sẽ yêu cầu kiểm tra thủ công vì không có cách an toàn để đoán ký hiệu gốc.
+Ứng dụng dùng phông **Cambria Math** cho các ký hiệu toán học như `∈`, `ℤ`, `ℕ`, `√`, `π` và phân số. Khi PDF làm mất ký hiệu trong điều kiện chỉ số quen thuộc như `k ∈ □`, `n ∈ □`, hoặc `m ∈ □`, ứng dụng tự khôi phục thành `ℤ`. Các biểu thức khác có ô vuông vẫn được đánh dấu để kiểm tra thủ công thay vì đoán ký hiệu gốc.
 
 Tệp PDF gốc không bị thay đổi và ứng dụng không tải tài liệu lên Internet.
