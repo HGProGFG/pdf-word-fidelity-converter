@@ -32,21 +32,21 @@ On the computer where you are preparing the app, open PowerShell in this folder 
 .\build_windows_app.ps1
 ```
 
-This creates `dist\TeacherPdfConverter\TeacherPdfConverter.exe`. Give your friend the entire `TeacherPdfConverter` folder, not the `.exe` by itself. They can double-click `TeacherPdfConverter.exe`, choose a PDF, and press **Convert PDF to Editable Word**.
+This creates the desktop app folder and executable. Give the recipient the entire generated folder, not the `.exe` by itself. They can double-click the executable, choose a PDF, and press **Convert PDF to Editable Word**.
 
-Microsoft Word must be installed and activated on their computer. The app does not upload their teaching materials or change the original PDF. It saves the editable Word document, round-trip PDF, review report, and any needed visual difference images in the folder they choose.
+Microsoft Word must be installed and activated on their computer. The app does not upload their source materials or change the original PDF. It saves the editable Word document, round-trip PDF, review report, and any needed visual difference images in the folder they choose.
 
 For best results, encourage them to use the original document when available. For example, start from the worksheet's Word file rather than a print-to-PDF copy; this retains actual editable equations and diagrams.
 
 ## Vietnamese app and easy installation
 
-The Vietnamese interface is [teacher_pdf_converter_vi.py](teacher_pdf_converter_vi.py). Build its single portable executable with:
+The Vietnamese interface source file is included with the project. Build its single portable executable with:
 
 ```powershell
 .\build_vietnamese_exe.ps1
 ```
 
-The result is `dist\ChuyenDoiPDFSangWord.exe`; it includes Python and its required conversion libraries. Give the teacher the entire project folder and have them double-click `CaiDatUngDungTiengViet.cmd` once. It adds a **Chuyển PDF sang Word** Start Menu shortcut without administrator permissions. Their computer still needs an activated desktop copy of Microsoft Word.
+The result is `dist\ChuyenDoiPDFSangWord.exe`; it includes Python and its required conversion libraries. Give the recipient the entire project folder and have them double-click `CaiDatUngDungTiengViet.cmd` once. It adds a **Chuyển PDF sang Word** Start Menu shortcut without administrator permissions. Their computer still needs an activated desktop copy of Microsoft Word.
 
 Vietnamese instructions are in [HUONG_DAN_TIENG_VIET.md](HUONG_DAN_TIENG_VIET.md).
 
