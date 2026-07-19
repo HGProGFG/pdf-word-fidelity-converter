@@ -1,6 +1,6 @@
 # PDF Word Fidelity Converter
 
-This Windows program converts a PDF into an editable Word `.docx` or exports a Word document into a print-quality PDF, then makes the result auditable. It includes a simple teacher-facing desktop app as well as a command line for technical users.
+This Windows program converts a PDF into an editable Word `.docx` or exports a Word document into a print-quality PDF, then makes the result auditable. It includes a simple desktop app as well as a command line for technical users.
 
 It deliberately uses the desktop Microsoft Word PDF importer. That is the local conversion engine most likely to retain editable paragraphs, tables, positioned elements, and Word equation objects when the PDF contains enough semantic information. It does **not** pretend that every PDF can be reconstructed perfectly: a PDF preserves final page appearance, not the original Word structure. Scanned PDFs, flattened equations, outlined text, damaged fonts, and complex vector diagrams may need manual repair or the original authoring file.
 
@@ -23,7 +23,8 @@ Install the Python packages from this folder:
 python -m pip install -r requirements.txt
 ```
 
-## Give it to a teacher
+## Give it to someone
+
 
 On the computer where you are preparing the app, open PowerShell in this folder and run:
 
